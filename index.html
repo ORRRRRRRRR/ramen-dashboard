@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>らーめん缶 売上ダッシュボード</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+JP:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --bg: #f8fafc;
+            --bg-card: #ffffff;
+            --bg-sidebar: #0f172a;
+            --border: #e2e8f0;
+            --border-light: #f1f5f9;
+            --text: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            --blue: #2563eb;
+            --blue-light: #eff6ff;
+            --purple: #7c3aed;
+            --purple-light: #f5f3ff;
+            --emerald: #059669;
+            --emerald-light: #ecfdf5;
+            --amber: #d97706;
+            --amber-light: #fffbeb;
+            --rose: #e11d48;
+            --rose-light: #fff1f2;
+            --cyan: #0891b2;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+            --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.05);
+            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.04);
+            --radius: 12px;
+            --radius-lg: 16px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', 'Noto Sans JP', -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .layout { display: flex; min-height: 100vh; }
+
+        /* Sidebar */
+        .sidebar {
+            width: 260px; background: var(--bg-sidebar); color: #fff;
+            padding: 28px 20px; display: flex; flex-direction: column;
+            position: fixed; top: 0; left: 0; bottom: 0; z-index: 50; overflow-y: auto;
+        }
+        .sidebar-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 36px; padding: 0 4px; }
+        .sidebar-brand-icon { width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, #2563eb, #7c3aed); display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+        .sidebar-brand h1 { font-size: 16px; font-weight: 700; line-height: 1.3; }
+        .sidebar-brand small { font-size: 11px; color: #94a3b8; font-weight: 400; }
+        .sidebar-section { margin-bottom: 28px; }
+        .sidebar-section-title { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 1.2px; padding: 0 12px; margin-bottom: 8px; }
+        .sidebar-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: #cbd5e1; cursor: pointer; transition: all 0.15s; margin-bottom: 2px; }
+        .sidebar-item:hover { background: rgba(255,255,255,0.06); color: #fff; }
+        .sidebar-item.active { background: rgba(37,99,235,0.2); color: #60a5fa; }
+        .sidebar-item .icon { font-size: 16px; width: 20px; text-align: center; }
+
+        .month-btn {
+            display: flex; align-items: center; justify-content: space-between; width: 100%;
+            padding: 10px 12px; border-radius: 8px; font-size: 13px; font-weight: 600;
+            cursor: pointer; transition: all 0.15s; background: transparent; border: 1px solid transparent;
+            color: #cbd5e1; font-family: inherit; text-align: left;
+        }
+        .month-btn:hover { background: rgba(255,255,255,0.06); color: #fff; }
+        .month-btn.active { background: rgba(37,99,235,0.15); color: #60a5fa; border-color: rgba(37,99,235,0.3); }
+        .month-btn .badge-count { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: rgba(255,255,255,0.08); color: #94a3b8; }
+        .month-btn.active .badge-count { background: rgba(37,99,235,0.25); color: #60a5fa; }
+
+        .sidebar-footer { margin-top: auto; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.06); }
+        .sidebar-status { display: flex; align-items: center; gap: 8px; padding: 10px 12px; font-size: 12px; color: #94a3b8; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #059669; animation: statusPulse 2s ease-in-out infinite; }
+        .status-dot.error { background: #e11d48; animation: none; }
+        .status-dot.loading { background: #2563eb; }
+        @keyframes statusPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        /* Main */
+        .main { flex: 1; margin-left: 260px; padding: 28px 32px; max-width: 1280px; }
+
+        .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+        .topbar-title { font-size: 22px; font-weight: 800; letter-spacing: -0.3px; }
+        .topbar-actions { display: flex; align-items: center; gap: 12px; }
+
+        .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); font-family: inherit; }
+        .btn:hover { border-color: #cbd5e1; box-shadow: var(--shadow-sm); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .last-updated { font-size: 12px; color: var(--text-muted); }
+
+        /* View Mode Selector */
+        .view-selector { display: flex; gap: 4px; background: var(--border-light); border-radius: 10px; padding: 3px; margin-bottom: 24px; width: fit-content; }
+        .view-btn { padding: 7px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; background: transparent; border: none; color: var(--text-muted); font-family: inherit; }
+        .view-btn:hover { color: var(--text-secondary); }
+        .view-btn.active { background: var(--bg-card); color: var(--text); box-shadow: var(--shadow-sm); }
+
+        /* Cards */
+        .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; box-shadow: var(--shadow); transition: box-shadow 0.2s; }
+        .card:hover { box-shadow: var(--shadow-md); }
+        .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+        .card-title { font-size: 14px; font-weight: 700; color: var(--text); }
+        .card-subtitle { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+        .card-badge { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 6px; }
+
+        /* KPI */
+        .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+        .kpi-card { padding: 20px 24px; position: relative; }
+        .kpi-card .kpi-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+        .kpi-icon { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+        .kpi-trend { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 6px; }
+        .kpi-trend.up { background: var(--emerald-light); color: var(--emerald); }
+        .kpi-trend.down { background: var(--rose-light); color: var(--rose); }
+        .kpi-trend.neutral { background: var(--border-light); color: var(--text-muted); }
+        .kpi-value { font-size: 28px; font-weight: 800; letter-spacing: -1px; line-height: 1; margin-bottom: 4px; }
+        .kpi-label { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+
+        /* Charts */
+        .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+        .chart-area { position: relative; height: 260px; }
+        .chart-area canvas { width: 100% !important; height: 100% !important; }
+
+        /* Achievement */
+        .achievement-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+        .achievement-card { text-align: center; padding: 24px 20px; }
+        .achievement-ring { position: relative; width: 120px; height: 120px; margin: 0 auto 12px; }
+        .achievement-ring canvas { width: 120px !important; height: 120px !important; }
+        .achievement-center { position: absolute; top: 68%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
+        .achievement-pct { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+        .achievement-lbl { font-size: 10px; color: var(--text-muted); font-weight: 600; letter-spacing: 0.3px; }
+        .achievement-month { font-size: 14px; font-weight: 700; margin-bottom: 2px; }
+        .achievement-target { font-size: 12px; color: var(--text-muted); }
+        .achievement-card.total-card { background: linear-gradient(135deg, #eff6ff, #f5f3ff); border-color: #c7d2fe; }
+
+        /* Bottom Grid */
+        .bottom-grid { display: grid; grid-template-columns: 340px 1fr; gap: 16px; margin-bottom: 24px; }
+
+        /* Inventory */
+        .inventory-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border-light); }
+        .inventory-item:last-child { border-bottom: none; }
+        .inv-color { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+        .inv-name { flex: 1; font-size: 13px; font-weight: 500; color: var(--text-secondary); }
+        .inv-qty { font-size: 14px; font-weight: 700; min-width: 36px; text-align: right; }
+        .inv-bar-wrap { width: 60px; height: 6px; border-radius: 3px; background: var(--border-light); overflow: hidden; }
+        .inv-bar { height: 100%; border-radius: 3px; transition: width 0.8s ease; }
+
+        .inv-tabs { display: flex; gap: 4px; margin-bottom: 14px; background: var(--border-light); border-radius: 8px; padding: 3px; }
+        .inv-tab { flex: 1; padding: 6px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s; background: transparent; border: none; color: var(--text-muted); font-family: inherit; text-align: center; white-space: nowrap; }
+        .inv-tab:hover { color: var(--text-secondary); }
+        .inv-tab.active { background: var(--bg-card); color: var(--text); box-shadow: var(--shadow-sm); }
+
+        /* Data Table */
+        .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .data-table th { padding: 10px 12px; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; text-align: right; border-bottom: 2px solid var(--border); white-space: nowrap; }
+        .data-table th:first-child { text-align: left; }
+        .data-table td { padding: 10px 12px; font-weight: 500; text-align: right; border-bottom: 1px solid var(--border-light); font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+        .data-table td:first-child { text-align: left; font-weight: 700; color: var(--text); }
+        .data-table tr:hover td { background: #f8fafc; }
+        .data-table tr.month-last td { border-bottom: 2px solid var(--border); }
+        .data-table tr.section-divider td { border-top: 3px solid var(--blue); background: var(--blue-light); font-weight: 700; color: var(--blue); }
+
+        .rate-chip { display: inline-block; padding: 2px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; }
+        .rate-high { background: var(--emerald-light); color: var(--emerald); }
+        .rate-mid { background: var(--amber-light); color: var(--amber); }
+        .rate-low { background: var(--rose-light); color: var(--rose); }
+
+        .unit-badge { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; margin-left: 4px; vertical-align: middle; }
+        .unit-yen { background: var(--amber-light); color: var(--amber); }
+        .unit-cases { background: var(--blue-light); color: var(--blue); }
+
+        /* Loading */
+        .loading-screen { position: fixed; inset: 0; background: rgba(248,250,252,0.92); display: flex; align-items: center; justify-content: center; z-index: 200; backdrop-filter: blur(8px); transition: opacity 0.4s; }
+        .loading-screen.hidden { opacity: 0; pointer-events: none; }
+        .loader { text-align: center; }
+        .loader-spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 12px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loader-text { font-size: 14px; color: var(--text-secondary); font-weight: 500; }
+
+        /* Responsive */
+        @media (max-width: 1100px) {
+            .sidebar { display: none; }
+            .main { margin-left: 0; }
+            .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+            .achievement-grid { grid-template-columns: repeat(2, 1fr); }
+            .bottom-grid { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 700px) {
+            .main { padding: 16px; }
+            .kpi-grid { grid-template-columns: 1fr; }
+            .charts-row { grid-template-columns: 1fr; }
+            .achievement-grid { grid-template-columns: 1fr 1fr; }
+            .topbar { flex-direction: column; align-items: flex-start; gap: 12px; }
+        }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
+        .fade-in { animation: fadeIn 0.4s ease-out forwards; opacity: 0; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .d1 { animation-delay: 0.05s; } .d2 { animation-delay: 0.1s; } .d3 { animation-delay: 0.15s; }
+        .d4 { animation-delay: 0.2s; } .d5 { animation-delay: 0.25s; } .d6 { animation-delay: 0.3s; }
+    </style>
+</head>
+
+<body>
+    <div class="loading-screen" id="loading-screen">
+        <div class="loader">
+            <div class="loader-spinner"></div>
+            <div class="loader-text">スプレッドシートからデータを取得中...</div>
+        </div>
+    </div>
+
+    <div class="layout">
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <div class="sidebar-brand-icon">🍜</div>
+                <div>
+                    <h1>らーめん缶</h1>
+                    <small>売上管理ダッシュボード</small>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">表示モード</div>
+                <div class="sidebar-item active" data-view="weekly" onclick="switchViewMode('weekly')">
+                    <span class="icon">📅</span> 週次 (現クール)
+                </div>
+                <div class="sidebar-item" data-view="monthly" onclick="switchViewMode('monthly')">
+                    <span class="icon">📆</span> 月次 (全期間)
+                </div>
+                <div class="sidebar-item" data-view="yearly" onclick="switchViewMode('yearly')">
+                    <span class="icon">📊</span> 年次 (全期間)
+                </div>
+            </div>
+
+            <div class="sidebar-section" id="sidebar-months-section">
+                <div class="sidebar-section-title">月別フィルタ</div>
+                <div id="sidebar-months"></div>
+            </div>
+
+            <div class="sidebar-footer">
+                <div class="sidebar-status">
+                    <span class="status-dot" id="status-dot"></span>
+                    <span id="sidebar-status-text">接続中...</span>
+                </div>
+                <button class="btn" style="width:100%;justify-content:center;background:rgba(255,255,255,0.04);border-color:rgba(255,255,255,0.1);color:#cbd5e1;margin-top:8px;" onclick="refreshData()">
+                    <span id="refresh-icon">↻</span> データ更新
+                </button>
+            </div>
+        </aside>
+
+        <main class="main">
+            <div class="topbar fade-in d1">
+                <div>
+                    <div class="topbar-title" id="page-title">販売実績サマリー</div>
+                    <div class="last-updated" id="last-updated">読み込み中...</div>
+                </div>
+                <div class="topbar-actions">
+                    <span class="last-updated" id="data-range-label"></span>
+                </div>
+            </div>
+
+            <!-- View Mode (mobile) -->
+            <div class="view-selector fade-in d1" id="view-selector-mobile" style="display:none;">
+                <button class="view-btn active" data-mode="weekly" onclick="switchViewMode('weekly')">週次</button>
+                <button class="view-btn" data-mode="monthly" onclick="switchViewMode('monthly')">月次</button>
+                <button class="view-btn" data-mode="yearly" onclick="switchViewMode('yearly')">年次</button>
+            </div>
+
+            <!-- Sheet Tabs (multi-sheet, weekly only) -->
+            <div class="view-selector" id="sheet-tabs" style="display:none;"></div>
+
+            <!-- KPIs -->
+            <div class="kpi-grid">
+                <div class="card kpi-card fade-in d1">
+                    <div class="kpi-header">
+                        <div class="kpi-icon" style="background:var(--blue-light);color:var(--blue);">📦</div>
+                        <span class="kpi-trend neutral" id="kpi-total-trend">—</span>
+                    </div>
+                    <div class="kpi-value" id="kpi-total" style="color:var(--blue);">—</div>
+                    <div class="kpi-label" id="kpi-total-label">累計販売</div>
+                </div>
+                <div class="card kpi-card fade-in d2">
+                    <div class="kpi-header">
+                        <div class="kpi-icon" style="background:var(--emerald-light);color:var(--emerald);">📈</div>
+                        <span class="kpi-trend neutral" id="kpi-daily-trend">—</span>
+                    </div>
+                    <div class="kpi-value" id="kpi-daily" style="color:var(--emerald);">—</div>
+                    <div class="kpi-label" id="kpi-daily-label">直近日販</div>
+                </div>
+                <div class="card kpi-card fade-in d3">
+                    <div class="kpi-header">
+                        <div class="kpi-icon" style="background:var(--purple-light);color:var(--purple);">🎯</div>
+                        <span class="kpi-trend neutral" id="kpi-rate-trend">—</span>
+                    </div>
+                    <div class="kpi-value" id="kpi-rate" style="color:var(--purple);">—</div>
+                    <div class="kpi-label" id="kpi-rate-label">最新達成率</div>
+                </div>
+                <div class="card kpi-card fade-in d4">
+                    <div class="kpi-header">
+                        <div class="kpi-icon" style="background:var(--amber-light);color:var(--amber);">💰</div>
+                    </div>
+                    <div class="kpi-value" id="kpi-revenue" style="color:var(--amber);">—</div>
+                    <div class="kpi-label" id="kpi-revenue-label">着地予想金額</div>
+                </div>
+            </div>
+
+            <!-- Achievement Gauges (weekly only) -->
+            <div class="achievement-grid" id="achievement-grid"></div>
+
+            <!-- Charts -->
+            <div class="charts-row fade-in d4" style="margin-top:24px;">
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title" id="channel-title">チャネル別 販売ケース</div>
+                            <div class="card-subtitle" id="channel-subtitle">週次推移</div>
+                        </div>
+                    </div>
+                    <div class="chart-area"><canvas id="chart-channel"></canvas></div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">日販推移</div>
+                            <div class="card-subtitle" id="daily-subtitle">ケース / 日</div>
+                        </div>
+                    </div>
+                    <div class="chart-area"><canvas id="chart-daily"></canvas></div>
+                </div>
+            </div>
+
+            <div class="charts-row fade-in d5">
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title" id="revenue-title">着地予想金額</div>
+                            <div class="card-subtitle" id="revenue-subtitle">週次推移</div>
+                        </div>
+                    </div>
+                    <div class="chart-area"><canvas id="chart-revenue"></canvas></div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">チャネル構成比</div>
+                            <div class="card-subtitle" id="pie-subtitle">現クール合算</div>
+                        </div>
+                    </div>
+                    <div class="chart-area"><canvas id="chart-pie"></canvas></div>
+                </div>
+            </div>
+
+            <!-- Bottom -->
+            <div class="bottom-grid fade-in d6">
+                <div class="card" id="inventory-card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">在庫状況</div>
+                            <div class="card-subtitle" id="inv-subtitle">SKU別 / 在庫総数</div>
+                        </div>
+                        <span class="card-badge" id="inv-total-badge" style="background:var(--blue-light);color:var(--blue);">—</span>
+                    </div>
+                    <div class="inv-tabs" id="inv-tabs">
+                        <button class="inv-tab active" data-inv="total" onclick="switchInvTab('total')">在庫総数</button>
+                        <button class="inv-tab" data-inv="morigasaki" onclick="switchInvTab('morigasaki')">森ヶ崎</button>
+                        <button class="inv-tab" data-inv="hachikan" onclick="switchInvTab('hachikan')">ハチカン</button>
+                    </div>
+                    <div id="inventory-list"></div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title" id="table-title">実績データ一覧</div>
+                            <div class="card-subtitle" id="table-subtitle">週次 / 全チャネル</div>
+                        </div>
+                    </div>
+                    <div style="overflow-x:auto;">
+                        <table class="data-table" id="data-table">
+                            <thead id="data-thead">
+                                <tr>
+                                    <th>期間</th>
+                                    <th>大手商社</th>
+                                    <th>自販機</th>
+                                    <th>その他</th>
+                                    <th>STORES</th>
+                                    <th>合計</th>
+                                    <th>日販</th>
+                                    <th>達成率</th>
+                                </tr>
+                            </thead>
+                            <tbody id="data-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // ==================== CONFIG ====================
+        const SPREADSHEET_ID = '1caF2qStBl1FyakUvutstvUoLR9-x4JzD4Mi_HGw7UUI';
+        const AUTO_REFRESH = 5 * 60 * 1000;
+
+        // ==================== PAST DATA (static, yen-based) ====================
+        const PAST_DATA = [
+            // 2024-10 ~ 12 (monthly totals, yen)
+            { year: 2024, month: 10, unit: 'yen', total: 3353626, daily: 108181, revenue: 3353626, rate: 176.51, shosha: 269568, jidouki: 387504, sonota: 2138650, stores: 557904 },
+            { year: 2024, month: 11, unit: 'yen', total: 3150517, daily: 105017, revenue: 3150517, rate: 150.02, shosha: 269568, jidouki: 1125669, sonota: 1729360, stores: 25920 },
+            { year: 2024, month: 12, unit: 'yen', total: 3705631, daily: 119536, revenue: 3705631, rate: 176.46, shosha: 16848, jidouki: 1561833, sonota: 2012054, stores: 114896 },
+            // 2025-1 ~ 12 (monthly totals, yen, no channel breakdown)
+            { year: 2025, month: 1,  unit: 'yen', total: 3316836, daily: 107027, revenue: 3316836, rate: 0, shosha: 0, jidouki: 0, sonota: 0, stores: 0 },
+            { year: 2025, month: 2,  unit: 'yen', total: 2524704, daily: 90168,  revenue: 2524704, rate: 0, shosha: 0, jidouki: 0, sonota: 0, stores: 0 },
+            { year: 2025, month: 3,  unit: 'yen', total: 1260285, daily: 40654,  revenue: 1260285, rate: 0, shosha: 0, jidouki: 0, sonota: 0, stores: 0 },
+            { year: 2025, month: 4,  unit: 'yen', total: 983351,  daily: 32778,  revenue: 983351,  rate: 0, shosha: 0, jidouki: 0, sonota: 0, stores: 0 },
+            { year: 2025, month: 5,  unit: 'yen', total: 578897,  daily: 18674,  revenue: 578897,  rate: 0, shosha: 0, jidouki: 0, sonota: 0, stores: 0 },
+            { year: 2025, month: 6,  unit: 'yen', total: 11251155,daily: 375038, revenue: 11251155,rate: 0, shosha: 0, jidouki: 0, sonota: 0, stores: 0 },
+            { year: 2025, month: 7,  unit: 'yen', total: 3600746, daily: 116153, revenue: 3600746, rate: 0, shosha: 0, jidouki: 0, sonota: 0, stores: 0 },
+            { year: 2025, month: 8,  unit: 'yen', total: 2171468, daily: 70048,  revenue: 2171468, rate: 0, shosha: 0, jidouki: 0, sonota: 0, stores: 0 },
+            { year: 2025, month: 9,  unit: 'yen', total: 2908472, daily: 96949,  revenue: 2908472, rate: 0, shosha: 0, jidouki: 0, sonota: 0, stores: 0 },
+            { year: 2025, month: 10, unit: 'yen', total: 3353626, daily: 108181, revenue: 3353626, rate: 0, shosha: 0, jidouki: 0, sonota: 0, stores: 0 },
+            { year: 2025, month: 11, unit: 'yen', total: 3150517, daily: 105017, revenue: 3150517, rate: 0, shosha: 0, jidouki: 0, sonota: 0, stores: 0 },
+            { year: 2025, month: 12, unit: 'yen', total: 3705631, daily: 119536, revenue: 3705631, rate: 0, shosha: 0, jidouki: 0, sonota: 0, stores: 0 },
+        ];
+
+        // State
+        let allSheets = [];       // [{name, salesData, inventory, targets, year}, ...]
+        let activeSheetIdx = 0;
+        let salesData = [];
+        let inventory = { total: [], morigasaki: [], hachikan: [] };
+        let currentInvTab = 'total';
+        let targets = {};
+        let viewMode = 'weekly'; // 'weekly' | 'monthly' | 'yearly'
+        let monthFilter = 'all'; // 'all' or month number (weekly mode only)
+        let charts = {};
+        let _jsonpN = 0;
+
+        // Sheet name patterns to probe (add future quarters here, or they'll be auto-discovered)
+        const SHEET_CANDIDATES = [
+            { name: '着予シート(2026-1~3)',   year: 2026, startMonth: 1, endMonth: 3 },
+            { name: '着予シート(2026-4~6)',   year: 2026, startMonth: 4, endMonth: 6 },
+            { name: '着予シート(2026-7~9)',   year: 2026, startMonth: 7, endMonth: 9 },
+            { name: '着予シート(2026-10~12)', year: 2026, startMonth: 10, endMonth: 12 },
+            { name: '着予シート(2027-1~3)',   year: 2027, startMonth: 1, endMonth: 3 },
+            { name: '着予シート(2027-4~6)',   year: 2027, startMonth: 4, endMonth: 6 },
+        ];
+
+        // ==================== DATA FETCH ====================
+        function fetchSheet(sheetNameOrGid) {
+            return new Promise((resolve, reject) => {
+                const cb = '_cb_' + (++_jsonpN);
+                const timer = setTimeout(() => { delete window[cb]; reject(new Error('timeout')); }, 12000);
+                window[cb] = function (resp) {
+                    clearTimeout(timer); delete window[cb];
+                    if (resp.status === 'error') { reject(new Error(resp.errors?.[0]?.message || 'error')); return; }
+                    const rows = [];
+                    rows.push(resp.table.cols.map(c => c.label || ''));
+                    for (const r of resp.table.rows) {
+                        rows.push(r.c.map(cell => {
+                            if (!cell) return '';
+                            if (cell.f != null) return cell.f;
+                            if (cell.v != null) return String(cell.v);
+                            return '';
+                        }));
+                    }
+                    resolve(rows);
+                };
+                const s = document.createElement('script');
+                const param = typeof sheetNameOrGid === 'number' ? `gid=${sheetNameOrGid}` : `sheet=${encodeURIComponent(sheetNameOrGid)}`;
+                s.src = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:${cb}&${param}`;
+                s.onerror = () => { clearTimeout(timer); delete window[cb]; reject(new Error('network')); };
+                document.head.appendChild(s);
+                s.onload = () => s.remove();
+            });
+        }
+
+        function parseRows(rows) {
+            const data = [];
+            const inv = { total: [], morigasaki: [], hachikan: [] };
+            const tgt = {};
+            for (let i = 1; i < rows.length; i++) {
+                const r = rows[i];
+                if (!r || r.length < 11) continue;
+                const month = parseFloat(r[0]), day = parseFloat(r[1]);
+                if (isNaN(month) || isNaN(day)) continue;
+                const shosha = parseFloat(r[2]) || 0, jidouki = parseFloat(r[3]) || 0;
+                const sonota = parseFloat(r[4]) || 0, stores = parseFloat(r[5]) || 0;
+                const collab = parseFloat(r[6]) || 0, total = parseFloat(r[7]) || 0;
+                const daily = parseFloat(r[8]) || 0;
+                const revenue = parseFloat((r[9] || '').replace(/[¥,\s]/g, '')) || 0;
+                const rate = parseFloat((r[10] || '').replace(/[%\s]/g, '')) || 0;
+                const target = parseFloat((r[11] || '').replace(/[,\s]/g, '')) || 0;
+                if (target > 0) tgt[month] = target;
+                data.push({ month, day, shosha, jidouki, sonota, stores, collab, total, daily, revenue, rate, unit: 'cases', year: 2026 });
+
+                // Inventory
+                if (r[13]) {
+                    const label = String(r[13]);
+                    const skuDefs = [
+                        { col: 14, name: '醤油 #14 ラベルなし', color: '#2563eb' },
+                        { col: 16, name: '醤油 #24 ラベルあり', color: '#60a5fa' },
+                        { col: 18, name: '醤油 #24 ラベルなし', color: '#93c5fd' },
+                        { col: 20, name: '醤油 フォーク付き', color: '#0891b2' },
+                        { col: 22, name: '味噌 #14 ラベルあり', color: '#d97706' },
+                        { col: 24, name: '味噌 #14 ラベルなし', color: '#f59e0b' },
+                        { col: 26, name: '味噌 フォーク付き', color: '#059669' },
+                    ];
+                    let invKey = null;
+                    if (label.includes('在庫総数')) invKey = 'total';
+                    else if (label.includes('森ヶ崎')) invKey = 'morigasaki';
+                    else if (label.includes('ハチカン')) invKey = 'hachikan';
+                    if (invKey) {
+                        for (const it of skuDefs) {
+                            inv[invKey].push({ name: it.name, qty: parseFloat(r[it.col]) || 0, color: it.color });
+                        }
+                    }
+                }
+            }
+            const hasInv = inv.total.length > 0 || inv.morigasaki.length > 0 || inv.hachikan.length > 0;
+            return { salesData: data, inventory: hasInv ? inv : null, targets: tgt };
+        }
+
+        // ==================== MULTI-SHEET DISCOVERY ====================
+        async function discoverAndFetchSheets() {
+            const found = [];
+            const fingerprints = new Set();
+
+            // Try Sheets API v4 first for sheet list
+            let sheetList = null;
+            try {
+                const resp = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}?fields=sheets.properties`);
+                if (resp.ok) {
+                    const data = await resp.json();
+                    sheetList = (data.sheets || []).map(s => s.properties.title);
+                    console.log('Sheets API v4:', sheetList);
+                }
+            } catch (e) { /* fallback to probing */ }
+
+            // Build candidate list
+            let candidates;
+            if (sheetList) {
+                // Use actual sheet names that match 着予シート pattern
+                candidates = sheetList
+                    .filter(n => n.includes('着予'))
+                    .map(name => {
+                        const m = name.match(/(20\d{2})-?(\d{1,2})~(\d{1,2})/);
+                        return {
+                            name,
+                            year: m ? parseInt(m[1]) : 2026,
+                            startMonth: m ? parseInt(m[2]) : 1,
+                            endMonth: m ? parseInt(m[3]) : 12,
+                        };
+                    });
+            } else {
+                candidates = SHEET_CANDIDATES;
+            }
+
+            // Sort chronologically
+            candidates.sort((a, b) => a.year !== b.year ? a.year - b.year : a.startMonth - b.startMonth);
+
+            // Fetch first (current) sheet to establish fingerprint
+            for (let i = 0; i < candidates.length; i++) {
+                const c = candidates[i];
+                setStatus('loading', `${c.name} を取得中... (${found.length + 1}/${candidates.length})`);
+                try {
+                    const rows = await fetchSheet(c.name);
+                    const fp = rows.slice(1, 6).map(r => r.join('|')).join('##');
+
+                    // Skip duplicate data (non-existent sheets return default sheet)
+                    if (fingerprints.has(fp)) {
+                        console.log(`  Skip (dup): ${c.name}`);
+                        continue;
+                    }
+                    fingerprints.add(fp);
+
+                    const parsed = parseRows(rows);
+                    if (parsed.salesData.length > 0) {
+                        // Set correct year on data
+                        for (const d of parsed.salesData) {
+                            d.year = c.year;
+                            d.unit = 'cases';
+                        }
+                        const displayName = `${c.year} ${c.startMonth}~${c.endMonth}月`;
+                        found.push({
+                            name: displayName,
+                            year: c.year,
+                            startMonth: c.startMonth,
+                            endMonth: c.endMonth,
+                            salesData: parsed.salesData,
+                            inventory: parsed.inventory,
+                            targets: parsed.targets,
+                        });
+                        console.log(`  OK: ${c.name} (${parsed.salesData.length} rows)`);
+                    }
+                } catch (e) {
+                    console.log(`  Skip: ${c.name} (${e.message})`);
+                }
+            }
+
+            return found;
+        }
+
+        // ==================== AGGREGATION ====================
+        function getMonthlyData() {
+            // Combine PAST_DATA + ALL sheets' salesData aggregated to monthly
+            const result = [];
+
+            // Past data (already monthly)
+            for (const d of PAST_DATA) {
+                result.push({ ...d, label: `${d.year}/${d.month}月` });
+            }
+
+            // All sheets' data: take last entry per year-month
+            const allData = allSheets.flatMap(sh => sh.salesData);
+            const seen = new Map(); // "year-month" -> last entry
+            for (const d of allData) {
+                if (d.total <= 0) continue;
+                const key = `${d.year}-${d.month}`;
+                seen.set(key, d);
+            }
+            // Sort and add
+            const entries = [...seen.entries()].sort(([a], [b]) => {
+                const [ay, am] = a.split('-').map(Number);
+                const [by, bm] = b.split('-').map(Number);
+                return ay !== by ? ay - by : am - bm;
+            });
+            for (const [, d] of entries) {
+                result.push({ ...d, label: `${d.year}/${d.month}月` });
+            }
+            return result;
+        }
+
+        function getYearlyData() {
+            const monthly = getMonthlyData();
+            const yearMap = new Map();
+            for (const d of monthly) {
+                if (!yearMap.has(d.year)) {
+                    yearMap.set(d.year, { year: d.year, label: `${d.year}年`, total: 0, daily: 0, revenue: 0, rate: 0, shosha: 0, jidouki: 0, sonota: 0, stores: 0, unit: d.unit, _months: 0 });
+                }
+                const agg = yearMap.get(d.year);
+                agg.total += d.total;
+                agg.shosha += d.shosha;
+                agg.jidouki += d.jidouki;
+                agg.sonota += d.sonota;
+                agg.stores += d.stores;
+                agg.revenue += d.revenue;
+                agg.daily = d.daily; // latest month's daily
+                agg.rate = d.rate;
+                agg.unit = d.unit; // last unit wins (2026 = cases)
+                agg._months++;
+            }
+            return [...yearMap.values()];
+        }
+
+        function getDisplayData() {
+            if (viewMode === 'weekly') {
+                let data = salesData.filter(d => d.total > 0);
+                if (monthFilter !== 'all') data = data.filter(d => d.month === monthFilter);
+                return data.map(d => ({ ...d, label: `${d.month}/${d.day}`, unit: 'cases' }));
+            } else if (viewMode === 'monthly') {
+                return getMonthlyData();
+            } else {
+                return getYearlyData();
+            }
+        }
+
+        // ==================== RENDER ====================
+        function renderKPIs() {
+            const display = getDisplayData();
+            if (!display.length) return;
+            const latest = display[display.length - 1];
+
+            // Total
+            let totalVal;
+            if (viewMode === 'weekly') {
+                const months = [...new Set(salesData.filter(d => d.total > 0).map(d => d.month))];
+                totalVal = 0;
+                for (const m of months) {
+                    const md = salesData.filter(d => d.month === m && d.total > 0);
+                    if (md.length) totalVal += md[md.length - 1].total;
+                }
+                if (monthFilter !== 'all') {
+                    const md = salesData.filter(d => d.month === monthFilter && d.total > 0);
+                    totalVal = md.length ? md[md.length - 1].total : 0;
+                }
+            } else {
+                totalVal = display.reduce((s, d) => s + d.total, 0);
+            }
+
+            const isYen = latest.unit === 'yen';
+            document.getElementById('kpi-total').textContent = isYen ? '¥' + totalVal.toLocaleString() : totalVal.toLocaleString();
+            document.getElementById('kpi-total-label').textContent =
+                viewMode === 'weekly' ? (monthFilter !== 'all' ? `${monthFilter}月 累計ケース` : '累計販売ケース (全月合計)')
+                    : viewMode === 'monthly' ? '全期間 売上合計 (混合単位)' : '年別 合計';
+
+            const trendEl = document.getElementById('kpi-total-trend');
+            trendEl.className = 'kpi-trend neutral';
+            trendEl.textContent = isYen ? '¥' : 'ケース';
+
+            document.getElementById('kpi-daily').textContent = isYen ? '¥' + Math.round(latest.daily).toLocaleString() : latest.daily.toFixed(1);
+            document.getElementById('kpi-daily-label').textContent = `直近日販 (${latest.label})`;
+
+            if (display.length >= 2) {
+                const prev = display[display.length - 2];
+                const diff = latest.daily - prev.daily;
+                const dt = document.getElementById('kpi-daily-trend');
+                dt.className = 'kpi-trend ' + (diff > 0 ? 'up' : diff < 0 ? 'down' : 'neutral');
+                dt.textContent = (diff > 0 ? '+' : '') + (isYen ? '¥' + Math.round(diff).toLocaleString() : diff.toFixed(1));
+            }
+
+            document.getElementById('kpi-rate').textContent = latest.rate > 0 ? latest.rate.toFixed(1) + '%' : '—';
+            document.getElementById('kpi-rate-label').textContent = viewMode === 'weekly'
+                ? `${latest.month}月達成率` + (targets[latest.month] ? ` (目標${targets[latest.month]}ケース)` : '')
+                : `最新達成率 (${latest.label})`;
+
+            const rateTrend = document.getElementById('kpi-rate-trend');
+            if (latest.rate >= 100) { rateTrend.className = 'kpi-trend up'; rateTrend.textContent = '目標達成'; }
+            else if (latest.rate >= 50) { rateTrend.className = 'kpi-trend neutral'; rateTrend.textContent = '進行中'; }
+            else if (latest.rate > 0) { rateTrend.className = 'kpi-trend down'; rateTrend.textContent = '要注意'; }
+            else { rateTrend.className = 'kpi-trend neutral'; rateTrend.textContent = '—'; }
+
+            document.getElementById('kpi-revenue').textContent = '¥' + latest.revenue.toLocaleString();
+            document.getElementById('kpi-revenue-label').textContent = `着地予想 (${latest.label})`;
+        }
+
+        // Gauges (weekly only)
+        function renderAchievements() {
+            const grid = document.getElementById('achievement-grid');
+            grid.innerHTML = '';
+            Object.keys(charts).forEach(k => { if (k.startsWith('gauge-')) { charts[k].destroy(); delete charts[k]; } });
+
+            if (viewMode !== 'weekly') { grid.style.display = 'none'; return; }
+            grid.style.display = 'grid';
+
+            const months = [...new Set(salesData.map(d => d.month))].sort((a, b) => a - b);
+            months.forEach((m, i) => {
+                const md = salesData.filter(d => d.month === m && d.total > 0);
+                const rate = md.length ? md[md.length - 1].rate : 0;
+                const latest = md.length ? md[md.length - 1] : null;
+                const tgt = targets[m] || 0;
+                const cid = `gauge-${m}`, vid = `gval-${m}`;
+                const div = document.createElement('div');
+                div.className = `card achievement-card fade-in d${i + 2}`;
+                div.innerHTML = `<div class="achievement-month">${m}月</div><div class="achievement-target">目標: ${tgt || '—'} ケース${latest ? ` / 実績: ${latest.total}` : ''}</div><div class="achievement-ring"><canvas id="${cid}"></canvas><div class="achievement-center"><div class="achievement-pct" id="${vid}">—</div><div class="achievement-lbl">達成率</div></div></div>`;
+                grid.appendChild(div);
+                createGauge(cid, vid, rate, rate >= 100 ? '#059669' : rate > 0 ? '#2563eb' : '#cbd5e1');
+            });
+
+            // Total
+            const totalTarget = Object.values(targets).reduce((s, v) => s + v, 0);
+            let totalAchieved = 0;
+            for (const m of months) { const md = salesData.filter(d => d.month === m && d.total > 0); if (md.length) totalAchieved += md[md.length - 1].total; }
+            const totalRate = totalTarget > 0 ? (totalAchieved / totalTarget * 100) : 0;
+            const td = document.createElement('div');
+            td.className = 'card achievement-card total-card fade-in d5';
+            td.innerHTML = `<div class="achievement-month" style="color:var(--purple);">クール合計</div><div class="achievement-target">目標: ${totalTarget || '—'} / 実績: ${totalAchieved}</div><div class="achievement-ring"><canvas id="gauge-total"></canvas><div class="achievement-center"><div class="achievement-pct" id="gval-total" style="color:var(--purple);">—</div><div class="achievement-lbl">達成率</div></div></div>`;
+            grid.appendChild(td);
+            createGauge('gauge-total', 'gval-total', totalRate, totalRate >= 100 ? '#059669' : '#7c3aed');
+        }
+
+        function createGauge(canvasId, valId, rate, color) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            charts[canvasId] = new Chart(canvas, {
+                type: 'doughnut',
+                data: { datasets: [{ data: [Math.min(rate, 150), Math.max(0, 100 - Math.min(rate, 150))], backgroundColor: [color, '#e2e8f0'], borderWidth: 0, borderRadius: 4 }] },
+                options: { responsive: false, cutout: '80%', rotation: -90, circumference: 180, plugins: { legend: { display: false }, tooltip: { enabled: false } }, animation: { animateRotate: true, duration: 1200 } }
+            });
+            const el = document.getElementById(valId);
+            if (el) { el.textContent = rate.toFixed(1) + '%'; el.style.color = color; }
+        }
+
+        // Chart defaults
+        const CO = {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { color: '#64748b', font: { family: 'Inter', size: 11, weight: '500' }, padding: 14, usePointStyle: true, pointStyleWidth: 8 } },
+                tooltip: { backgroundColor: '#0f172a', titleFont: { family: 'Inter', size: 12, weight: '600' }, bodyFont: { family: 'Inter', size: 11 }, borderColor: '#334155', borderWidth: 1, cornerRadius: 8, padding: 10, displayColors: true, boxPadding: 3 }
+            },
+            scales: {
+                x: { grid: { color: '#f1f5f9' }, ticks: { color: '#94a3b8', font: { size: 11 } } },
+                y: { grid: { color: '#f1f5f9' }, ticks: { color: '#94a3b8', font: { size: 11 } } }
+            }
+        };
+
+        function renderCharts() {
+            const data = getDisplayData();
+            const labels = data.map(d => d.label);
+
+            // Subtitles
+            const modeLabel = viewMode === 'weekly' ? '週次' : viewMode === 'monthly' ? '月次' : '年次';
+            document.getElementById('channel-subtitle').textContent = `${modeLabel}推移 / 積み上げ`;
+            document.getElementById('daily-subtitle').textContent = `${modeLabel} / 日販推移`;
+            document.getElementById('revenue-subtitle').textContent = `${modeLabel}推移 / 円`;
+            document.getElementById('pie-subtitle').textContent = viewMode === 'weekly' ? '現クール合算' : '表示期間合算';
+
+            // Channel (only show for data with channel breakdown)
+            if (charts['channel']) charts['channel'].destroy();
+            const hasChannels = data.some(d => (d.shosha + d.jidouki + d.sonota + d.stores) > 0);
+            document.getElementById('channel-title').textContent = hasChannels ? 'チャネル別 販売' : 'チャネル別 販売 (内訳なし)';
+
+            charts['channel'] = new Chart(document.getElementById('chart-channel'), {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [
+                        { label: '大手商社', data: data.map(d => d.shosha), backgroundColor: '#2563eb', borderRadius: 3, borderSkipped: false },
+                        { label: '自販機', data: data.map(d => d.jidouki), backgroundColor: '#7c3aed', borderRadius: 3, borderSkipped: false },
+                        { label: 'その他', data: data.map(d => d.sonota), backgroundColor: '#059669', borderRadius: 3, borderSkipped: false },
+                        { label: 'STORES', data: data.map(d => d.stores), backgroundColor: '#d97706', borderRadius: 3, borderSkipped: false },
+                    ]
+                },
+                options: { ...CO, scales: { ...CO.scales, x: { ...CO.scales.x, stacked: true }, y: { ...CO.scales.y, stacked: true } } }
+            });
+
+            // Daily
+            if (charts['daily']) charts['daily'].destroy();
+            charts['daily'] = new Chart(document.getElementById('chart-daily'), {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: '日販', data: data.map(d => d.daily),
+                        borderColor: '#059669', backgroundColor: 'rgba(5,150,105,0.06)',
+                        borderWidth: 2.5, fill: true, tension: 0.35,
+                        pointBackgroundColor: '#059669', pointBorderColor: '#fff', pointBorderWidth: 2, pointRadius: 4, pointHoverRadius: 6,
+                    }]
+                },
+                options: CO
+            });
+
+            // Revenue
+            if (charts['revenue']) charts['revenue'].destroy();
+            charts['revenue'] = new Chart(document.getElementById('chart-revenue'), {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: '売上/着地予想', data: data.map(d => d.revenue),
+                        backgroundColor: ctx => { const g = ctx.chart.ctx.createLinearGradient(0, 0, 0, 260); g.addColorStop(0, 'rgba(217,119,6,0.7)'); g.addColorStop(1, 'rgba(217,119,6,0.08)'); return g; },
+                        borderRadius: 5, borderSkipped: false,
+                    }]
+                },
+                options: { ...CO, scales: { ...CO.scales, y: { ...CO.scales.y, ticks: { ...CO.scales.y.ticks, callback: v => '¥' + (v / 10000).toFixed(0) + '万' } } } }
+            });
+
+            // Pie
+            if (charts['pie']) charts['pie'].destroy();
+            const totals = {
+                '大手商社': data.reduce((s, d) => s + d.shosha, 0),
+                '自販機': data.reduce((s, d) => s + d.jidouki, 0),
+                'その他': data.reduce((s, d) => s + d.sonota, 0),
+                'STORES': data.reduce((s, d) => s + d.stores, 0),
+            };
+            const entries = Object.entries(totals).filter(([, v]) => v > 0);
+            if (entries.length === 0) {
+                // No channel breakdown - show total as single slice
+                charts['pie'] = new Chart(document.getElementById('chart-pie'), {
+                    type: 'doughnut',
+                    data: { labels: ['合計'], datasets: [{ data: [data.reduce((s, d) => s + d.total, 0)], backgroundColor: ['#2563eb'], borderWidth: 2, borderColor: '#fff' }] },
+                    options: { responsive: true, maintainAspectRatio: false, cutout: '60%', plugins: { legend: CO.plugins.legend, tooltip: CO.plugins.tooltip } }
+                });
+            } else {
+                charts['pie'] = new Chart(document.getElementById('chart-pie'), {
+                    type: 'doughnut',
+                    data: { labels: entries.map(([k]) => k), datasets: [{ data: entries.map(([, v]) => v), backgroundColor: ['#2563eb', '#7c3aed', '#059669', '#d97706'], borderWidth: 2, borderColor: '#fff', hoverOffset: 10 }] },
+                    options: { responsive: true, maintainAspectRatio: false, cutout: '60%', plugins: { legend: CO.plugins.legend, tooltip: CO.plugins.tooltip } }
+                });
+            }
+        }
+
+        // Inventory
+        function switchInvTab(tab) {
+            currentInvTab = tab;
+            document.querySelectorAll('.inv-tab').forEach(el => el.classList.toggle('active', el.dataset.inv === tab));
+            renderInventory();
+        }
+
+        function renderInventory() {
+            const list = document.getElementById('inventory-list');
+            list.innerHTML = '';
+            // Hide inventory card in monthly/yearly
+            document.getElementById('inventory-card').style.display = viewMode === 'weekly' ? '' : 'none';
+            if (viewMode !== 'weekly') return;
+
+            const items = inventory[currentInvTab] || [];
+            const tabLabels = { total: '在庫総数', morigasaki: '森ヶ崎在庫', hachikan: 'ハチカン在庫' };
+            const hasTabs = inventory.morigasaki.length > 0 || inventory.hachikan.length > 0;
+            document.getElementById('inv-tabs').style.display = hasTabs ? 'flex' : 'none';
+            document.getElementById('inv-subtitle').textContent = `SKU別 / ${tabLabels[currentInvTab]}`;
+
+            if (!items.length) {
+                list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:24px;font-size:13px;">在庫データなし</div>';
+                document.getElementById('inv-total-badge').textContent = '—';
+                return;
+            }
+            const totalQty = items.reduce((s, i) => s + i.qty, 0);
+            const maxQty = Math.max(...items.map(i => i.qty));
+            document.getElementById('inv-total-badge').textContent = `合計 ${totalQty}`;
+
+            for (const item of items) {
+                if (item.qty === 0) continue;
+                const pct = maxQty > 0 ? (item.qty / maxQty * 100) : 0;
+                const div = document.createElement('div');
+                div.className = 'inventory-item';
+                div.innerHTML = `<div class="inv-color" style="background:${item.color}"></div><div class="inv-name">${item.name}</div><div class="inv-qty">${item.qty}</div><div class="inv-bar-wrap"><div class="inv-bar" style="width:${pct}%;background:${item.color};"></div></div>`;
+                list.appendChild(div);
+            }
+        }
+
+        // Data Table
+        function renderDataTable() {
+            const data = getDisplayData();
+            const tbody = document.getElementById('data-tbody');
+            tbody.innerHTML = '';
+
+            // Update titles
+            const modeLabel = viewMode === 'weekly' ? '週次' : viewMode === 'monthly' ? '月次' : '年次';
+            document.getElementById('table-title').textContent = `${modeLabel}実績データ`;
+            document.getElementById('table-subtitle').textContent = viewMode === 'weekly' ? '全チャネル / ケース' : '全期間 / 混合単位';
+
+            // Update header
+            const thead = document.getElementById('data-thead');
+            if (viewMode === 'weekly') {
+                thead.innerHTML = '<tr><th>期間</th><th>大手商社</th><th>自販機</th><th>その他</th><th>STORES</th><th>合計</th><th>日販</th><th>達成率</th></tr>';
+            } else {
+                thead.innerHTML = '<tr><th>期間</th><th>単位</th><th>合計</th><th>日販</th><th>達成率</th></tr>';
+            }
+
+            let prevUnit = null;
+            data.forEach((d, i) => {
+                if (d.total === 0 && d.daily === 0) return;
+                const isYen = d.unit === 'yen';
+                const rateClass = d.rate >= 100 ? 'rate-high' : d.rate >= 50 ? 'rate-mid' : d.rate > 0 ? 'rate-low' : '';
+                const fmt = v => isYen ? '¥' + v.toLocaleString() : v.toLocaleString();
+                const fmtDaily = v => isYen ? '¥' + Math.round(v).toLocaleString() : v.toFixed(1);
+                const unitBadge = `<span class="unit-badge ${isYen ? 'unit-yen' : 'unit-cases'}">${isYen ? '円' : 'ケース'}</span>`;
+
+                const tr = document.createElement('tr');
+
+                // Section divider when unit changes
+                if (viewMode !== 'weekly' && prevUnit !== null && prevUnit !== d.unit) {
+                    const divider = document.createElement('tr');
+                    divider.className = 'section-divider';
+                    const cols = viewMode === 'weekly' ? 8 : 5;
+                    divider.innerHTML = `<td colspan="${cols}" style="text-align:center;">▼ ${isYen ? '以下: 金額ベース (円)' : '以下: ケースベース'}</td>`;
+                    tbody.appendChild(divider);
+                }
+                prevUnit = d.unit;
+
+                const isMonthLast = viewMode === 'weekly' && ((i < data.length - 1 && data[i + 1].month !== d.month) || i === data.length - 1);
+                if (isMonthLast) tr.className = 'month-last';
+
+                if (viewMode === 'weekly') {
+                    tr.innerHTML = `
+                        <td>${d.label}</td>
+                        <td>${d.shosha.toLocaleString()}</td>
+                        <td>${d.jidouki.toLocaleString()}</td>
+                        <td>${d.sonota.toLocaleString()}</td>
+                        <td>${d.stores.toLocaleString()}</td>
+                        <td style="font-weight:700;color:var(--text);">${d.total.toLocaleString()}</td>
+                        <td>${d.daily.toFixed(1)}</td>
+                        <td><span class="rate-chip ${rateClass}">${d.rate.toFixed(1)}%</span></td>`;
+                } else {
+                    tr.innerHTML = `
+                        <td>${d.label}</td>
+                        <td style="text-align:center;">${unitBadge}</td>
+                        <td style="font-weight:700;color:var(--text);">${fmt(d.total)}</td>
+                        <td>${fmtDaily(d.daily)}</td>
+                        <td>${d.rate > 0 ? `<span class="rate-chip ${rateClass}">${d.rate.toFixed(1)}%</span>` : '—'}</td>`;
+                }
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Sidebar months (weekly only)
+        function renderSidebarMonths() {
+            const container = document.getElementById('sidebar-months');
+            container.innerHTML = '';
+            const section = document.getElementById('sidebar-months-section');
+
+            if (viewMode !== 'weekly') { section.style.display = 'none'; return; }
+            section.style.display = '';
+
+            // "All" button
+            const allBtn = document.createElement('button');
+            allBtn.className = 'month-btn' + (monthFilter === 'all' ? ' active' : '');
+            allBtn.innerHTML = '<span>全期間</span>';
+            allBtn.onclick = () => { monthFilter = 'all'; renderAll(); };
+            container.appendChild(allBtn);
+
+            const months = [...new Set(salesData.map(d => d.month))].sort((a, b) => a - b);
+            for (const m of months) {
+                const md = salesData.filter(d => d.month === m && d.total > 0);
+                const latest = md.length ? md[md.length - 1] : null;
+                const btn = document.createElement('button');
+                btn.className = 'month-btn' + (monthFilter === m ? ' active' : '');
+                btn.innerHTML = `<span>${m}月</span><span class="badge-count">${latest ? latest.rate.toFixed(0) + '%' : '—'}</span>`;
+                btn.onclick = () => { monthFilter = m; renderAll(); };
+                container.appendChild(btn);
+            }
+        }
+
+        // ==================== VIEW SWITCH ====================
+        function switchViewMode(mode) {
+            viewMode = mode;
+            monthFilter = 'all';
+            document.querySelectorAll('.sidebar-item[data-view]').forEach(el => el.classList.toggle('active', el.dataset.view === mode));
+            document.querySelectorAll('.view-btn[data-mode]').forEach(el => el.classList.toggle('active', el.dataset.mode === mode));
+
+            const sheetLabel = allSheets.length > 0 ? allSheets[activeSheetIdx].name : '';
+            const title = mode === 'weekly' ? `販売実績サマリー (${sheetLabel})` : mode === 'monthly' ? '月次推移 (2024.10 ~ 現在)' : '年次推移 (全期間)';
+            document.getElementById('page-title').textContent = title;
+
+            // Bottom grid layout: show/hide inventory
+            const bottomGrid = document.querySelector('.bottom-grid');
+            if (mode === 'weekly') {
+                bottomGrid.style.gridTemplateColumns = '340px 1fr';
+            } else {
+                bottomGrid.style.gridTemplateColumns = '1fr';
+            }
+
+            renderSheetTabs();
+            renderAll();
+        }
+
+        function renderAll() {
+            renderKPIs();
+            renderAchievements();
+            renderCharts();
+            renderInventory();
+            renderDataTable();
+            renderSidebarMonths();
+        }
+
+        // ==================== STATUS ====================
+        function setStatus(type, text) {
+            const dot = document.getElementById('status-dot');
+            dot.className = 'status-dot' + (type === 'error' ? ' error' : type === 'loading' ? ' loading' : '');
+            document.getElementById('sidebar-status-text').textContent = text;
+        }
+
+        // ==================== REFRESH ====================
+        async function refreshData() {
+            setStatus('loading', 'シートをスキャン中...');
+            const icon = document.getElementById('refresh-icon');
+            icon.style.animation = 'spin 0.7s linear infinite';
+            try {
+                const sheets = await discoverAndFetchSheets();
+
+                if (sheets.length === 0) throw new Error('No sheets found');
+
+                allSheets = sheets;
+
+                // Keep active index in range
+                if (activeSheetIdx >= allSheets.length) activeSheetIdx = allSheets.length - 1;
+
+                // Set current data from active sheet
+                applyActiveSheet();
+
+                renderSheetTabs();
+                renderAll();
+                const now = new Date();
+                document.getElementById('last-updated').textContent = `最終更新: ${now.toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
+                const totalRows = allSheets.reduce((s, sh) => s + sh.salesData.filter(d => d.total > 0).length, 0);
+                setStatus('ok', `${allSheets.length}シート / ${totalRows}件 + 過去${PAST_DATA.length}件`);
+            } catch (err) {
+                console.error(err);
+                setStatus('error', '取得失敗');
+                if (!salesData.length) { useFallback(); renderAll(); }
+            } finally { icon.style.animation = ''; }
+        }
+
+        function applyActiveSheet() {
+            const sheet = allSheets[activeSheetIdx];
+            salesData = sheet.salesData;
+            if (sheet.inventory) inventory = sheet.inventory;
+            if (Object.keys(sheet.targets).length) targets = sheet.targets;
+        }
+
+        function switchSheet(idx) {
+            activeSheetIdx = idx;
+            applyActiveSheet();
+            renderSheetTabs();
+            renderAll();
+        }
+
+        function renderSheetTabs() {
+            const container = document.getElementById('sheet-tabs');
+            if (!container) return;
+            if (viewMode !== 'weekly' || allSheets.length <= 1) {
+                container.style.display = 'none';
+                return;
+            }
+            container.style.display = 'flex';
+            container.innerHTML = '';
+            allSheets.forEach((sheet, idx) => {
+                const btn = document.createElement('button');
+                btn.className = 'view-btn' + (idx === activeSheetIdx ? ' active' : '');
+                btn.textContent = sheet.name;
+                btn.onclick = () => switchSheet(idx);
+                container.appendChild(btn);
+            });
+        }
+
+        function useFallback() {
+            salesData = [
+                { month: 1, day: 8, shosha: 0, jidouki: 2, sonota: 3, stores: 2, collab: 0, total: 7, daily: 0.875, revenue: 228501, rate: 2.8, unit: 'cases', year: 2026 },
+                { month: 1, day: 15, shosha: 0, jidouki: 85, sonota: 39, stores: 7, collab: 0, total: 131, daily: 8.733, revenue: 2280658, rate: 52.4, unit: 'cases', year: 2026 },
+                { month: 1, day: 22, shosha: 0, jidouki: 149, sonota: 78, stores: 7, collab: 0, total: 234, daily: 10.636, revenue: 2777623, rate: 93.6, unit: 'cases', year: 2026 },
+                { month: 1, day: 29, shosha: 0, jidouki: 172, sonota: 111, stores: 7, collab: 0, total: 290, daily: 10.0, revenue: 2611440, rate: 116.0, unit: 'cases', year: 2026 },
+                { month: 1, day: 31, shosha: 0, jidouki: 172, sonota: 117, stores: 7, collab: 0, total: 296, daily: 9.548, revenue: 2493504, rate: 118.4, unit: 'cases', year: 2026 },
+                { month: 2, day: 5, shosha: 174, jidouki: 17, sonota: 17, stores: 0, collab: 0, total: 208, daily: 41.6, revenue: 9812275, rate: 46.22, unit: 'cases', year: 2026 },
+                { month: 2, day: 12, shosha: 219, jidouki: 17, sonota: 34, stores: 1, collab: 0, total: 271, daily: 22.583, revenue: 5326776, rate: 60.22, unit: 'cases', year: 2026 },
+                { month: 2, day: 19, shosha: 221, jidouki: 25, sonota: 47, stores: 1, collab: 0, total: 294, daily: 15.474, revenue: 3649809, rate: 65.33, unit: 'cases', year: 2026 },
+                { month: 2, day: 26, shosha: 221, jidouki: 25, sonota: 64, stores: 1, collab: 0, total: 311, daily: 11.962, revenue: 2821392, rate: 69.11, unit: 'cases', year: 2026 },
+                { month: 2, day: 28, shosha: 221, jidouki: 25, sonota: 65, stores: 1, collab: 0, total: 312, daily: 11.143, revenue: 2628288, rate: 69.33, unit: 'cases', year: 2026 },
+                { month: 3, day: 5, shosha: 4, jidouki: 1, sonota: 25, stores: 0, collab: 0, total: 30, daily: 6.0, revenue: 1566864, rate: 10.0, unit: 'cases', year: 2026 },
+                { month: 3, day: 12, shosha: 4, jidouki: 2, sonota: 49, stores: 0, collab: 0, total: 55, daily: 4.583, revenue: 1196910, rate: 18.33, unit: 'cases', year: 2026 },
+            ];
+            inventory = {
+                total: [
+                    { name: '醤油 #14 ラベルなし', qty: 196, color: '#2563eb' }, { name: '醤油 #24 ラベルあり', qty: 228, color: '#60a5fa' },
+                    { name: '醤油 #24 ラベルなし', qty: 120, color: '#93c5fd' }, { name: '醤油 フォーク付き', qty: 24, color: '#0891b2' },
+                    { name: '味噌 #14 ラベルあり', qty: 175, color: '#d97706' }, { name: '味噌 #14 ラベルなし', qty: 214, color: '#f59e0b' },
+                    { name: '味噌 フォーク付き', qty: 13, color: '#059669' },
+                ],
+                morigasaki: [
+                    { name: '醤油 #14 ラベルなし', qty: 0, color: '#2563eb' }, { name: '醤油 #24 ラベルあり', qty: 55, color: '#60a5fa' },
+                    { name: '醤油 #24 ラベルなし', qty: 0, color: '#93c5fd' }, { name: '醤油 フォーク付き', qty: 24, color: '#0891b2' },
+                    { name: '味噌 #14 ラベルあり', qty: 57, color: '#d97706' }, { name: '味噌 #14 ラベルなし', qty: 0, color: '#f59e0b' },
+                    { name: '味噌 フォーク付き', qty: 13, color: '#059669' },
+                ],
+                hachikan: [
+                    { name: '醤油 #14 ラベルなし', qty: 196, color: '#2563eb' }, { name: '醤油 #24 ラベルあり', qty: 173, color: '#60a5fa' },
+                    { name: '醤油 #24 ラベルなし', qty: 120, color: '#93c5fd' }, { name: '醤油 フォーク付き', qty: 0, color: '#0891b2' },
+                    { name: '味噌 #14 ラベルあり', qty: 118, color: '#d97706' }, { name: '味噌 #14 ラベルなし', qty: 214, color: '#f59e0b' },
+                    { name: '味噌 フォーク付き', qty: 0, color: '#059669' },
+                ],
+            };
+            targets = { 1: 250, 2: 450, 3: 300 };
+        }
+
+        // Show mobile view selector on small screens
+        function checkMobileView() {
+            const sel = document.getElementById('view-selector-mobile');
+            sel.style.display = window.innerWidth <= 1100 ? 'flex' : 'none';
+        }
+        window.addEventListener('resize', checkMobileView);
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            checkMobileView();
+            await refreshData();
+            document.getElementById('loading-screen').classList.add('hidden');
+            setInterval(refreshData, AUTO_REFRESH);
+        });
+    </script>
+</body>
+</html>
