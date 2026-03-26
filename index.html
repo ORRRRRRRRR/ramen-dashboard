@@ -678,7 +678,28 @@
             if (viewMode === 'weekly') {
                 let data = salesData.filter(d => d.total > 0);
                 if (monthFilter !== 'all') data = data.filter(d => d.month === monthFilter);
-                return data.map(d => ({ ...d, label: `${d.month}/${d.day}`, unit: 'cases' }));
+                // Calculate weekly delta (spreadsheet data is cumulative within each month)
+                const result = [];
+                const prevByMonth = {};
+                for (const d of data) {
+                    const prev = prevByMonth[d.month];
+                    result.push({
+                        ...d,
+                        label: `${d.month}/${d.day}`,
+                        unit: 'cases',
+                        shosha: prev ? d.shosha - prev.shosha : d.shosha,
+                        jidouki: prev ? d.jidouki - prev.jidouki : d.jidouki,
+                        sonota: prev ? d.sonota - prev.sonota : d.sonota,
+                        stores: prev ? d.stores - prev.stores : d.stores,
+                        collab: prev ? d.collab - prev.collab : d.collab,
+                        total: prev ? d.total - prev.total : d.total,
+                        _cumTotal: d.total,
+                        _cumRate: d.rate,
+                        _cumRevenue: d.revenue,
+                    });
+                    prevByMonth[d.month] = d;
+                }
+                return result;
             } else if (viewMode === 'monthly') {
                 return getMonthlyData();
             } else {
@@ -699,7 +720,7 @@
                 const latestWeek = display[display.length - 1];
                 totalVal = latestWeek.total;
                 document.getElementById('kpi-total').textContent = totalVal.toLocaleString();
-                document.getElementById('kpi-total-label').textContent = `${latestWeek.month}/${latestWeek.day} 週 累計ケース`;
+                document.getElementById('kpi-total-label').textContent = `${latestWeek.month}/${latestWeek.day} 週 販売ケース`;
                 const trendEl = document.getElementById('kpi-total-trend');
                 trendEl.className = 'kpi-trend neutral';
                 trendEl.textContent = 'ケース';
@@ -746,18 +767,20 @@
                 }
             }
 
-            document.getElementById('kpi-rate').textContent = latest.rate > 0 ? latest.rate.toFixed(1) + '%' : '—';
+            const rateVal = latest._cumRate != null ? latest._cumRate : latest.rate;
+            document.getElementById('kpi-rate').textContent = rateVal > 0 ? rateVal.toFixed(1) + '%' : '—';
             document.getElementById('kpi-rate-label').textContent = viewMode === 'weekly'
                 ? `${latest.month}月達成率` + (targets[latest.month] ? ` (目標${targets[latest.month]}ケース)` : '')
                 : `最新達成率 (${latest.label})`;
 
             const rateTrend = document.getElementById('kpi-rate-trend');
-            if (latest.rate >= 100) { rateTrend.className = 'kpi-trend up'; rateTrend.textContent = '目標達成'; }
-            else if (latest.rate >= 50) { rateTrend.className = 'kpi-trend neutral'; rateTrend.textContent = '進行中'; }
-            else if (latest.rate > 0) { rateTrend.className = 'kpi-trend down'; rateTrend.textContent = '要注意'; }
+            if (rateVal >= 100) { rateTrend.className = 'kpi-trend up'; rateTrend.textContent = '目標達成'; }
+            else if (rateVal >= 50) { rateTrend.className = 'kpi-trend neutral'; rateTrend.textContent = '進行中'; }
+            else if (rateVal > 0) { rateTrend.className = 'kpi-trend down'; rateTrend.textContent = '要注意'; }
             else { rateTrend.className = 'kpi-trend neutral'; rateTrend.textContent = '—'; }
 
-            document.getElementById('kpi-revenue').textContent = '¥' + latest.revenue.toLocaleString();
+            const revenueVal = latest._cumRevenue != null ? latest._cumRevenue : latest.revenue;
+            document.getElementById('kpi-revenue').textContent = '¥' + revenueVal.toLocaleString();
             document.getElementById('kpi-revenue-label').textContent = `着地予想 (${latest.label})`;
         }
 
