@@ -695,19 +695,11 @@
             // Total - separate by unit in monthly/yearly views
             let totalVal;
             if (viewMode === 'weekly') {
-                const months = [...new Set(salesData.filter(d => d.total > 0).map(d => d.month))];
-                totalVal = 0;
-                for (const m of months) {
-                    const md = salesData.filter(d => d.month === m && d.total > 0);
-                    if (md.length) totalVal += md[md.length - 1].total;
-                }
-                if (monthFilter !== 'all') {
-                    const md = salesData.filter(d => d.month === monthFilter && d.total > 0);
-                    totalVal = md.length ? md[md.length - 1].total : 0;
-                }
+                // Show latest week's value
+                const latestWeek = display[display.length - 1];
+                totalVal = latestWeek.total;
                 document.getElementById('kpi-total').textContent = totalVal.toLocaleString();
-                document.getElementById('kpi-total-label').textContent =
-                    monthFilter !== 'all' ? `${monthFilter}月 累計ケース` : '累計販売ケース (全月合計)';
+                document.getElementById('kpi-total-label').textContent = `${latestWeek.month}/${latestWeek.day} 週 累計ケース`;
                 const trendEl = document.getElementById('kpi-total-trend');
                 trendEl.className = 'kpi-trend neutral';
                 trendEl.textContent = 'ケース';
@@ -718,15 +710,16 @@
                 const casesTotal = casesData.reduce((s, d) => s + d.total, 0);
                 const yenTotal = yenData.reduce((s, d) => s + d.total, 0);
 
-                // Show cases total as primary KPI
-                if (casesTotal > 0) {
-                    document.getElementById('kpi-total').textContent = casesTotal.toLocaleString();
+                // Show latest entry as primary KPI (not cumulative)
+                const latestEntry = display[display.length - 1];
+                if (latestEntry.unit === 'cases') {
+                    document.getElementById('kpi-total').textContent = latestEntry.total.toLocaleString();
                     document.getElementById('kpi-total-label').innerHTML =
-                        `ケース合計 (${casesData.length > 0 ? casesData[0].label + '~' + casesData[casesData.length - 1].label : ''})` +
-                        (yenTotal > 0 ? `<br><span style="color:var(--amber);font-weight:700;">¥${yenTotal.toLocaleString()}</span> <span style="font-size:10px;">(${yenData[0].label}~${yenData[yenData.length - 1].label} 金額ベース)</span>` : '');
+                        `${latestEntry.label} 販売ケース` +
+                        (yenTotal > 0 ? `<br><span style="color:var(--amber);font-weight:700;">¥${yenData[yenData.length - 1].total.toLocaleString()}</span> <span style="font-size:10px;">(${yenData[yenData.length - 1].label} 金額ベース)</span>` : '');
                 } else {
-                    document.getElementById('kpi-total').textContent = '¥' + yenTotal.toLocaleString();
-                    document.getElementById('kpi-total-label').textContent = '全期間 売上合計 (金額ベース)';
+                    document.getElementById('kpi-total').textContent = '¥' + latestEntry.total.toLocaleString();
+                    document.getElementById('kpi-total-label').textContent = `${latestEntry.label} 売上 (金額ベース)`;
                 }
                 const trendEl = document.getElementById('kpi-total-trend');
                 trendEl.className = 'kpi-trend neutral';
