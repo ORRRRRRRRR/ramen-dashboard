@@ -442,14 +442,11 @@
         let charts = {};
         let _jsonpN = 0;
 
-        // Sheet name patterns to probe (add future quarters here, or they'll be auto-discovered)
-        const SHEET_CANDIDATES = [
-            { name: '着予シート(2026-1~3)',   year: 2026, startMonth: 1, endMonth: 3 },
-            { name: '着予シート(2026-4~6)',   year: 2026, startMonth: 4, endMonth: 6 },
-            { name: '着予シート(2026-7~9)',   year: 2026, startMonth: 7, endMonth: 9 },
-            { name: '着予シート(2026-10~12)', year: 2026, startMonth: 10, endMonth: 12 },
-            { name: '着予シート(2027-1~3)',   year: 2027, startMonth: 1, endMonth: 3 },
-            { name: '着予シート(2027-4~6)',   year: 2027, startMonth: 4, endMonth: 6 },
+        // Known sheet gids (gid=0 is always the current/active quarter)
+        // Past quarters get archived to different gids - add them here as discovered
+        const KNOWN_GIDS = [
+            0,              // Current/active quarter (always present)
+            1797864535,     // 2026-1~3 (archived)
         ];
 
         // ==================== DATA FETCH ====================
@@ -528,83 +525,110 @@
         }
 
         // ==================== MULTI-SHEET DISCOVERY ====================
+        // Infer year from month range: if months are 1-6 and current real month is 1-6, it's this year.
+        // If months are 10-12 and current real month is 1-3, it's likely last year.
+        function inferYear(months) {
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            const currentMonth = now.getMonth() + 1;
+            const maxMonth = Math.max(...months);
+            const minMonth = Math.min(...months);
+            // If the data months are far ahead of current month, likely last year
+            if (minMonth > currentMonth + 3) return currentYear - 1;
+            return currentYear;
+        }
+
         async function discoverAndFetchSheets() {
             const found = [];
             const fingerprints = new Set();
 
-            // Try Sheets API v4 first for sheet list
-            let sheetList = null;
+            // Step 1: Try to discover all gids from HTML page
+            let discoveredGids = [];
             try {
-                const resp = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}?fields=sheets.properties`);
+                const resp = await fetch(`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/htmlview`);
                 if (resp.ok) {
-                    const data = await resp.json();
-                    sheetList = (data.sheets || []).map(s => s.properties.title);
-                    console.log('Sheets API v4:', sheetList);
+                    const html = await resp.text();
+                    const matches = [...html.matchAll(/gid[=:](\d+)/g)];
+                    discoveredGids = [...new Set(matches.map(m => parseInt(m[1])))];
+                    console.log('Discovered gids from HTML:', discoveredGids);
                 }
-            } catch (e) { /* fallback to probing */ }
-
-            // Build candidate list
-            let candidates;
-            if (sheetList) {
-                // Use actual sheet names that match 着予シート pattern
-                candidates = sheetList
-                    .filter(n => n.includes('着予'))
-                    .map(name => {
-                        const m = name.match(/(20\d{2})-?(\d{1,2})~(\d{1,2})/);
-                        return {
-                            name,
-                            year: m ? parseInt(m[1]) : 2026,
-                            startMonth: m ? parseInt(m[2]) : 1,
-                            endMonth: m ? parseInt(m[3]) : 12,
-                        };
-                    });
-            } else {
-                candidates = SHEET_CANDIDATES;
+            } catch (e) {
+                console.log('HTML discovery failed:', e.message);
             }
 
-            // Sort chronologically
-            candidates.sort((a, b) => a.year !== b.year ? a.year - b.year : a.startMonth - b.startMonth);
+            // Merge known + discovered gids (deduplicated)
+            const allGids = [...new Set([...KNOWN_GIDS, ...discoveredGids])];
+            console.log('All gids to probe:', allGids);
 
-            // Fetch first (current) sheet to establish fingerprint
-            for (let i = 0; i < candidates.length; i++) {
-                const c = candidates[i];
-                setStatus('loading', `${c.name} を取得中... (${found.length + 1}/${candidates.length})`);
+            // Step 2: Fetch each gid
+            for (let i = 0; i < allGids.length; i++) {
+                const gid = allGids[i];
+                setStatus('loading', `シート取得中... (gid=${gid}, ${i + 1}/${allGids.length})`);
                 try {
-                    const rows = await fetchSheet(c.name);
+                    const rows = await fetchSheet(gid);
                     const fp = rows.slice(1, 6).map(r => r.join('|')).join('##');
 
-                    // Skip duplicate data (non-existent sheets return default sheet)
                     if (fingerprints.has(fp)) {
-                        console.log(`  Skip (dup): ${c.name}`);
+                        console.log(`  Skip (dup): gid=${gid}`);
                         continue;
                     }
                     fingerprints.add(fp);
 
                     const parsed = parseRows(rows);
-                    if (parsed.salesData.length > 0) {
-                        // Set correct year on data
-                        for (const d of parsed.salesData) {
-                            d.year = c.year;
-                            d.unit = 'cases';
-                        }
-                        const displayName = `${c.year} ${c.startMonth}~${c.endMonth}月`;
-                        found.push({
-                            name: displayName,
-                            year: c.year,
-                            startMonth: c.startMonth,
-                            endMonth: c.endMonth,
-                            salesData: parsed.salesData,
-                            inventory: parsed.inventory,
-                            targets: parsed.targets,
-                        });
-                        console.log(`  OK: ${c.name} (${parsed.salesData.length} rows)`);
+                    if (parsed.salesData.length === 0) {
+                        console.log(`  Skip (no data): gid=${gid}`);
+                        continue;
                     }
+
+                    // Auto-detect period from actual data content
+                    const months = [...new Set(parsed.salesData.map(d => d.month))].sort((a, b) => a - b);
+                    const minMonth = months[0], maxMonth = months[months.length - 1];
+                    const year = inferYear(months);
+
+                    for (const d of parsed.salesData) {
+                        d.year = year;
+                        d.unit = 'cases';
+                    }
+
+                    const displayName = `${year} ${minMonth}~${maxMonth}月`;
+                    found.push({
+                        name: displayName,
+                        year,
+                        startMonth: minMonth,
+                        endMonth: maxMonth,
+                        salesData: parsed.salesData,
+                        inventory: parsed.inventory,
+                        targets: parsed.targets,
+                    });
+                    console.log(`  OK: gid=${gid} → ${displayName} (${parsed.salesData.length} rows)`);
                 } catch (e) {
-                    console.log(`  Skip: ${c.name} (${e.message})`);
+                    console.log(`  Skip: gid=${gid} (${e.message})`);
                 }
             }
 
-            return found;
+            // Post-process: filter and deduplicate
+            // 1. Only keep quarterly sheets (≤ 3 month range) to exclude yearly summaries
+            const quarterly = found.filter(s => (s.endMonth - s.startMonth + 1) <= 3);
+            // 2. Deduplicate by period: keep the one with more non-zero data
+            const byPeriod = new Map();
+            for (const s of quarterly) {
+                const key = `${s.year}-${s.startMonth}-${s.endMonth}`;
+                const existing = byPeriod.get(key);
+                if (!existing) {
+                    byPeriod.set(key, s);
+                } else {
+                    // Keep the one with more non-zero totals
+                    const existCount = existing.salesData.filter(d => d.total > 0).length;
+                    const newCount = s.salesData.filter(d => d.total > 0).length;
+                    if (newCount > existCount) byPeriod.set(key, s);
+                }
+            }
+            const deduped = [...byPeriod.values()];
+            console.log('Final sheets:', deduped.map(s => s.name));
+
+            // Sort chronologically
+            deduped.sort((a, b) => a.year !== b.year ? a.year - b.year : a.startMonth - b.startMonth);
+            return deduped;
         }
 
         // ==================== AGGREGATION ====================
@@ -1193,7 +1217,10 @@
 
                 allSheets = sheets;
 
-                // Keep active index in range
+                // Default to latest sheet with actual data (current quarter)
+                const idxWithData = allSheets.map((s, i) => ({ i, nonZero: s.salesData.filter(d => d.total > 0).length }))
+                    .filter(x => x.nonZero > 0);
+                activeSheetIdx = idxWithData.length ? idxWithData[idxWithData.length - 1].i : allSheets.length - 1;
                 if (activeSheetIdx >= allSheets.length) activeSheetIdx = allSheets.length - 1;
 
                 // Set current data from active sheet
