@@ -731,16 +731,17 @@
                 const casesTotal = casesData.reduce((s, d) => s + d.total, 0);
                 const yenTotal = yenData.reduce((s, d) => s + d.total, 0);
 
-                // Show latest entry as primary KPI (not cumulative)
-                const latestEntry = display[display.length - 1];
-                if (latestEntry.unit === 'cases') {
-                    document.getElementById('kpi-total').textContent = latestEntry.total.toLocaleString();
+                // Show latest month's data as primary KPI
+                const latestCases = casesData.length ? casesData[casesData.length - 1] : null;
+                const latestYen = yenData.length ? yenData[yenData.length - 1] : null;
+                if (latestCases) {
+                    document.getElementById('kpi-total').textContent = latestCases.total.toLocaleString();
                     document.getElementById('kpi-total-label').innerHTML =
-                        `${latestEntry.label} 販売ケース` +
-                        (yenTotal > 0 ? `<br><span style="color:var(--amber);font-weight:700;">¥${yenData[yenData.length - 1].total.toLocaleString()}</span> <span style="font-size:10px;">(${yenData[yenData.length - 1].label} 金額ベース)</span>` : '');
-                } else {
-                    document.getElementById('kpi-total').textContent = '¥' + latestEntry.total.toLocaleString();
-                    document.getElementById('kpi-total-label').textContent = `${latestEntry.label} 売上 (金額ベース)`;
+                        `${latestCases.label} 販売ケース` +
+                        (latestYen ? `<br><span style="color:var(--amber);font-weight:700;">¥${latestYen.total.toLocaleString()}</span> <span style="font-size:10px;">(${latestYen.label} 金額ベース)</span>` : '');
+                } else if (latestYen) {
+                    document.getElementById('kpi-total').textContent = '¥' + latestYen.total.toLocaleString();
+                    document.getElementById('kpi-total-label').textContent = `${latestYen.label} 売上 (金額ベース)`;
                 }
                 const trendEl = document.getElementById('kpi-total-trend');
                 trendEl.className = 'kpi-trend neutral';
@@ -855,20 +856,28 @@
             document.getElementById('revenue-subtitle').textContent = `${modeLabel}推移 / 円`;
             document.getElementById('pie-subtitle').textContent = viewMode === 'weekly' ? '現クール合算' : '表示期間合算';
 
+            // Detect mixed units (yen + cases)
+            const hasMixedUnits = viewMode !== 'weekly' && data.some(d => d.unit === 'yen') && data.some(d => d.unit === 'cases');
+
             // Channel (only show for data with channel breakdown)
             if (charts['channel']) charts['channel'].destroy();
-            const hasChannels = data.some(d => (d.shosha + d.jidouki + d.sonota + d.stores) > 0);
-            document.getElementById('channel-title').textContent = hasChannels ? 'チャネル別 販売' : 'チャネル別 販売 (内訳なし)';
+            // In mixed-unit views, use only cases data for channel chart (yen data mostly lacks channel breakdown)
+            const channelData = hasMixedUnits ? data.filter(d => d.unit === 'cases') : data;
+            const channelLabels = channelData.map(d => d.label);
+            const hasChannels = channelData.some(d => (d.shosha + d.jidouki + d.sonota + d.stores) > 0);
+            document.getElementById('channel-title').textContent = hasChannels
+                ? 'チャネル別 販売' + (hasMixedUnits ? ' (ケース)' : '')
+                : 'チャネル別 販売 (内訳なし)';
 
             charts['channel'] = new Chart(document.getElementById('chart-channel'), {
                 type: 'bar',
                 data: {
-                    labels,
+                    labels: channelLabels,
                     datasets: [
-                        { label: '大手商社', data: data.map(d => d.shosha), backgroundColor: '#2563eb', borderRadius: 3, borderSkipped: false },
-                        { label: '自販機', data: data.map(d => d.jidouki), backgroundColor: '#7c3aed', borderRadius: 3, borderSkipped: false },
-                        { label: 'その他', data: data.map(d => d.sonota), backgroundColor: '#059669', borderRadius: 3, borderSkipped: false },
-                        { label: 'STORES', data: data.map(d => d.stores), backgroundColor: '#d97706', borderRadius: 3, borderSkipped: false },
+                        { label: '大手商社', data: channelData.map(d => d.shosha), backgroundColor: '#2563eb', borderRadius: 3, borderSkipped: false },
+                        { label: '自販機', data: channelData.map(d => d.jidouki), backgroundColor: '#7c3aed', borderRadius: 3, borderSkipped: false },
+                        { label: 'その他', data: channelData.map(d => d.sonota), backgroundColor: '#059669', borderRadius: 3, borderSkipped: false },
+                        { label: 'STORES', data: channelData.map(d => d.stores), backgroundColor: '#d97706', borderRadius: 3, borderSkipped: false },
                     ]
                 },
                 options: { ...CO, scales: { ...CO.scales, x: { ...CO.scales.x, stacked: true }, y: { ...CO.scales.y, stacked: true } } }
@@ -876,7 +885,6 @@
 
             // Daily - separate colors for yen vs cases
             if (charts['daily']) charts['daily'].destroy();
-            const hasMixedUnits = viewMode !== 'weekly' && data.some(d => d.unit === 'yen') && data.some(d => d.unit === 'cases');
             if (hasMixedUnits) {
                 // Two datasets: yen and cases
                 const yenDaily = data.map(d => d.unit === 'yen' ? d.daily : null);
@@ -930,33 +938,34 @@
             // Revenue
             if (charts['revenue']) charts['revenue'].destroy();
             if (hasMixedUnits) {
-                // Color bars differently by unit
-                const bgColors = data.map(d => d.unit === 'yen' ? 'rgba(217,119,6,0.6)' : 'rgba(37,99,235,0.6)');
+                // Two datasets with separate Y axes for yen vs cases revenue
+                const yenRevenue = data.map(d => d.unit === 'yen' ? d.total : null);
+                const casesRevenue = data.map(d => d.unit === 'cases' ? d.revenue : null);
                 charts['revenue'] = new Chart(document.getElementById('chart-revenue'), {
                     type: 'bar',
                     data: {
                         labels,
-                        datasets: [{
-                            label: '売上/着地予想', data: data.map(d => d.unit === 'yen' ? d.total : d.revenue),
-                            backgroundColor: bgColors,
-                            borderRadius: 5, borderSkipped: false,
-                        }]
+                        datasets: [
+                            {
+                                label: '売上 (金額ベース)', data: yenRevenue,
+                                backgroundColor: 'rgba(217,119,6,0.6)',
+                                borderRadius: 5, borderSkipped: false,
+                                yAxisID: 'yYen',
+                            },
+                            {
+                                label: '着地予想 (ケース期)', data: casesRevenue,
+                                backgroundColor: 'rgba(37,99,235,0.6)',
+                                borderRadius: 5, borderSkipped: false,
+                                yAxisID: 'yCases',
+                            },
+                        ]
                     },
                     options: {
                         ...CO,
-                        scales: { ...CO.scales, y: { ...CO.scales.y, ticks: { ...CO.scales.y.ticks, callback: v => '¥' + (v / 10000).toFixed(0) + '万' } } },
-                        plugins: {
-                            ...CO.plugins,
-                            tooltip: {
-                                ...CO.plugins.tooltip,
-                                callbacks: {
-                                    label: function(ctx) {
-                                        const d = data[ctx.dataIndex];
-                                        const unitLabel = d.unit === 'yen' ? '(金額ベース)' : '(着地予想)';
-                                        return `¥${ctx.parsed.y.toLocaleString()} ${unitLabel}`;
-                                    }
-                                }
-                            }
+                        scales: {
+                            x: CO.scales.x,
+                            yYen: { position: 'left', grid: { color: '#f1f5f9' }, ticks: { color: '#d97706', font: { size: 11 }, callback: v => '¥' + (v / 10000).toFixed(0) + '万' }, title: { display: true, text: '円', color: '#d97706' } },
+                            yCases: { position: 'right', grid: { drawOnChartArea: false }, ticks: { color: '#2563eb', font: { size: 11 }, callback: v => '¥' + (v / 10000).toFixed(0) + '万' }, title: { display: true, text: '着地予想', color: '#2563eb' } },
                         }
                     }
                 });
@@ -975,13 +984,14 @@
                 });
             }
 
-            // Pie
+            // Pie (use only cases data when mixed, to avoid yen/cases confusion)
             if (charts['pie']) charts['pie'].destroy();
+            const pieData = hasMixedUnits ? data.filter(d => d.unit === 'cases') : data;
             const totals = {
-                '大手商社': data.reduce((s, d) => s + d.shosha, 0),
-                '自販機': data.reduce((s, d) => s + d.jidouki, 0),
-                'その他': data.reduce((s, d) => s + d.sonota, 0),
-                'STORES': data.reduce((s, d) => s + d.stores, 0),
+                '大手商社': pieData.reduce((s, d) => s + d.shosha, 0),
+                '自販機': pieData.reduce((s, d) => s + d.jidouki, 0),
+                'その他': pieData.reduce((s, d) => s + d.sonota, 0),
+                'STORES': pieData.reduce((s, d) => s + d.stores, 0),
             };
             const entries = Object.entries(totals).filter(([, v]) => v > 0);
             if (entries.length === 0) {
